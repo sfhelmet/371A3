@@ -1,14 +1,18 @@
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-#include <vector>
-#include <iostream>
 
-#include "tiny_obj_loader.h"
-
-
+struct Face {
+    std::vector<int> vertexIndices;
+};
+ 
 // Vertex Shader source code
 const char* vertexShaderSource = R"glsl(
     #version 330 core
@@ -36,112 +40,126 @@ glm::vec3 translation(0.0f, 0.0f, 0.0f);
 float angle = 0.0f;
 glm::vec3 scale(1.0f, 1.0f, 1.0f); 
 
+std::vector<Face> faces;
+std::vector< glm::vec3 > vertices;
 
 // Prototypes
+bool parseOBJ(const std::string& filePath);
 void checkCompileErrors(GLuint shader, std::string type);
 unsigned int initialize();
 void processInput(GLFWwindow* window);
 
 int main() {
-    tinyobj::attrib_t attrib;
-    std::vector<tinyobj::shape_t> shapes;
-    std::vector<tinyobj::material_t> materials;
-    std::string warn, err;
-
-    bool success = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "bottle.obj");
-
-    if (!warn.empty()) {
-        std::cout << "Warning: " << warn << std::endl;
-    }
-    if (!err.empty()) {
-        std::cerr << "Error: " << err << std::endl;
-    }
-    if (!success) {
-        std::cerr << "Failed to load OBJ file!" << std::endl;
-        return -1;
+    // Initialize GLFW
+    if (!glfwInit()) {
+        std::cerr << "Failed to initialize GLFW" << std::endl;
+        return 0;
     }
 
-    // // Initialize GLFW
-    // if (!glfwInit()) {
-    //     std::cerr << "Failed to initialize GLFW" << std::endl;
-    //     return 0;
-    // }
+    // Set GLFW context version
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    // // Set GLFW context version
-    // glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    // glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    // Create a GLFW window
+    GLFWwindow* window = glfwCreateWindow(800, 600, "OpenGL Triangle with Transform", nullptr, nullptr);
+    if (window == nullptr) {
+        std::cerr << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
+        return 0;
+    }
+    glfwMakeContextCurrent(window);
 
-    // // Create a GLFW window
-    // GLFWwindow* window = glfwCreateWindow(800, 600, "OpenGL Triangle with Transform", nullptr, nullptr);
-    // if (window == nullptr) {
-    //     std::cerr << "Failed to create GLFW window" << std::endl;
-    //     glfwTerminate();
-    //     return 0;
-    // }
-    // glfwMakeContextCurrent(window);
+    // Initialize GLEW
+    unsigned int shaderProgram = initialize();
 
-    // // Initialize GLEW
-    // unsigned int shaderProgram = initialize();
+    const char* path = "../bottle.obj";
+    parseOBJ(path);
 
-    // // Set up vertex data and buffers
-    // float verticesTriangle[] = {
-    //     -0.5f, -0.5f, 0.0f,
-    //      0.5f, -0.5f, 0.0f,
-    //      0.0f,  0.5f, 0.0f
-    // };
+    unsigned int VBO[2], VAO[2], EBO;
+    glGenVertexArrays(2, VAO);
+    glGenBuffers(2, VBO);
 
-    // unsigned int VBO[2], VAO[2], EBO;
-    // glGenVertexArrays(2, VAO);
-    // glGenBuffers(2, VBO);
+    glBindVertexArray(VAO[0]);
 
-    // glBindVertexArray(VAO[0]);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    // glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
-    // glBufferData(GL_ARRAY_BUFFER, sizeof(verticesTriangle), verticesTriangle, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
 
-    // glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    // glEnableVertexAttribArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 
-    // glBindBuffer(GL_ARRAY_BUFFER, 0);
-    // glBindVertexArray(0);
+    // Render loop
+    while (!glfwWindowShouldClose(window)) {
+        processInput(window);
 
-    // // Render loop
-    // while (!glfwWindowShouldClose(window)) {
-    //     processInput(window);
+        glm::mat4 transform = glm::mat4(1.0f);
 
-    //     glm::mat4 transform = glm::mat4(1.0f);
+        transform = glm::rotate(transform, glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
+        transform = glm::translate(transform, translation);
+        transform = glm::scale(transform, scale);
 
-    //     transform = glm::rotate(transform, glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
-    //     transform = glm::translate(transform, translation);
-    //     transform = glm::scale(transform, scale);
+        // Rendering commands here
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
 
-    //     // Rendering commands here
-    //     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-    //     glClear(GL_COLOR_BUFFER_BIT);
+        glUseProgram(shaderProgram);
 
-    //     glUseProgram(shaderProgram);
+        // Pass the transformation matrix to the shader
+        unsigned int transformLoc = glGetUniformLocation(shaderProgram, "transform");
+        glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transform));
 
-    //     // Pass the transformation matrix to the shader
-    //     unsigned int transformLoc = glGetUniformLocation(shaderProgram, "transform");
-    //     glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transform));
+        glBindVertexArray(VAO[0]);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
 
-    //     glBindVertexArray(VAO[0]);
-    //     glDrawArrays(GL_TRIANGLES, 0, 3);
+        // Swap buffers and poll IO events
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
 
-    //     // Swap buffers and poll IO events
-    //     glfwSwapBuffers(window);
-    //     glfwPollEvents();
-    // }
+    // Cleanup
+    glDeleteVertexArrays(2, VAO);
+    glDeleteBuffers(2, VBO);
+    glDeleteProgram(shaderProgram);
 
-    // // Cleanup
-    // glDeleteVertexArrays(2, VAO);
-    // glDeleteBuffers(2, VBO);
-    // glDeleteProgram(shaderProgram);
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    return 0;
+}
 
-    // glfwDestroyWindow(window);
-    // glfwTerminate();
-    // return 0;
+bool parseOBJ(const std::string& filePath) {
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open file: " << filePath << std::endl;
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::istringstream sstream(line);
+        std::string prefix;
+        sstream >> prefix;
+
+        if (prefix == "v") {
+            glm::vec3 vertex;
+            sstream >> vertex.x >> vertex.y >> vertex.z;
+            vertices.push_back(vertex);
+        } else if (prefix == "f") {
+            Face face;
+            std::string vertexData;
+            while (sstream >> vertexData) {
+                std::istringstream vertexStream(vertexData);
+                std::string index;
+                std::getline(vertexStream, index, '/');  // Only extract vertex index
+                face.vertexIndices.push_back(std::stoi(index) - 1);
+            }
+            faces.push_back(face);
+        }
+    }
+
+    return true;
 }
 
 void checkCompileErrors(GLuint shader, std::string type) {
