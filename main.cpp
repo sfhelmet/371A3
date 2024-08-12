@@ -9,6 +9,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+
+// Structures
 struct Face {
     std::vector<int> vertexIndices;
 };
@@ -28,12 +30,12 @@ const char* fragmentShaderSource = R"glsl(
     #version 330 core
     out vec4 FragColor;
     void main() {
-        FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+        FragColor = vec4(0.96, 0.87, 0.70, 1.0);
     }
 )glsl";
 
-float d = 0.01f;
-float degree = 1.0f;
+float d = 0.1f;
+float degree = 0.5f;
 float s = 0.01f;
 
 glm::vec3 translation(0.0f, 0.0f, 0.0f);
@@ -41,13 +43,15 @@ float angle = 0.0f;
 glm::vec3 scale(1.0f, 1.0f, 1.0f); 
 
 std::vector<Face> faces;
-std::vector< glm::vec3 > vertices;
+std::vector<glm::vec3> vertices;
+std::vector<float> vertexData;  // Flattened vertex data for OpenGL
 
-// Prototypes
+// Functions
 bool parseOBJ(const std::string& filePath);
 void checkCompileErrors(GLuint shader, std::string type);
 unsigned int initialize();
 void processInput(GLFWwindow* window);
+glm::vec3 calculateTransformedCenter(const std::vector<glm::vec3>& vertices, glm::vec3 translation, float angle, glm::vec3 scale);
 
 int main() {
     // Initialize GLFW
@@ -73,7 +77,8 @@ int main() {
     // Initialize GLEW
     unsigned int shaderProgram = initialize();
 
-    const char* path = "../bottle.obj";
+    // Parse the OBJ file
+    const char* path = "../bottle_01.obj";
     parseOBJ(path);
 
     unsigned int VBO[2], VAO[2], EBO;
@@ -83,43 +88,50 @@ int main() {
     glBindVertexArray(VAO[0]);
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertexData.size() * sizeof(float), &vertexData[0], GL_STATIC_DRAW);
 
+    // Define vertex data layout
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
+    glm::vec3 objectCenter = calculateTransformedCenter(vertices, translation, angle, scale);
+
+    glm::mat4 transform = glm::mat4(1.0f);
+
+    transform = glm::translate(transform, -objectCenter);
+    
     // Render loop
     while (!glfwWindowShouldClose(window)) {
         processInput(window);
 
-        glm::mat4 transform = glm::mat4(1.0f);
+        glm::vec3 objectCenter = calculateTransformedCenter(vertices, translation, angle, scale);
 
+        transform = glm::translate(transform, -objectCenter);
         transform = glm::rotate(transform, glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
+        transform = glm::translate(transform, objectCenter);
+
         transform = glm::translate(transform, translation);
         transform = glm::scale(transform, scale);
 
-        // Rendering commands here
+        // Rendering commands
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(shaderProgram);
-
-        // Pass the transformation matrix to the shader
         unsigned int transformLoc = glGetUniformLocation(shaderProgram, "transform");
         glUniformMatrix4fv(transformLoc, 1, GL_FALSE, glm::value_ptr(transform));
 
         glBindVertexArray(VAO[0]);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glDrawArrays(GL_TRIANGLES, 0, vertexData.size() / 3);
 
-        // Swap buffers and poll IO events
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-    // Cleanup
+    // Cleanup 
     glDeleteVertexArrays(2, VAO);
     glDeleteBuffers(2, VBO);
     glDeleteProgram(shaderProgram);
@@ -127,6 +139,25 @@ int main() {
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
+}
+
+glm::vec3 calculateTransformedCenter(const std::vector<glm::vec3>& vertices, glm::vec3 translation, float angle, glm::vec3 scale) {
+    glm::mat4 transform = glm::mat4(1.0f);
+
+    // Apply transformations: translation, rotation, and scaling
+    transform = glm::translate(transform, translation);
+    transform = glm::rotate(transform, glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
+    transform = glm::scale(transform, scale);
+
+    glm::vec3 transformedCenter(0.0f, 0.0f, 0.0f);
+    for (const auto& vertex : vertices) {
+        glm::vec4 transformedVertex = transform * glm::vec4(vertex, 1.0f);
+        transformedCenter += glm::vec3(transformedVertex);
+    }
+
+    transformedCenter /= vertices.size();
+
+    return transformedCenter;
 }
 
 bool parseOBJ(const std::string& filePath) {
@@ -156,6 +187,16 @@ bool parseOBJ(const std::string& filePath) {
                 face.vertexIndices.push_back(std::stoi(index) - 1);
             }
             faces.push_back(face);
+        }
+    }
+
+    // Flatten the vertex data according to face indices
+    for (const auto& face : faces) {
+        for (int index : face.vertexIndices) {
+            glm::vec3 vertex = vertices[index];
+            vertexData.push_back(vertex.x);
+            vertexData.push_back(vertex.y);
+            vertexData.push_back(vertex.z);
         }
     }
 
